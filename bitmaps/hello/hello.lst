@@ -1,0 +1,161 @@
+                        
+                        ;=======================================================
+                        ;=======================================================
+                        ;  Z80 SOC Hello World
+                        ;=======================================================
+                        ;=======================================================
+                        
+                        ;=======================================================
+                        ; Defines
+                        ;=======================================================
+                        
+                        ; UART register addresses
+                        ;
+   0000                 uartcntl     equ    $0000
+   0001                 uartbsr0     equ    $0001
+   0002                 uartbsr1     equ    $0002
+   0003                 uartstat     equ    $0003
+   0004                 uartmask     equ    $0004
+   0005                 uartdata     equ    $0005
+                        
+                        ; UART baud rate
+                        ;
+   00e3                 baud0        equ    $e3     ; 115200
+   0078                 baud1        equ    $78     ; 115200
+                        
+                        ; UART status register bit definitions
+                        ;
+   0040                 framingerror equ    $40
+   0020                 parityerror  equ    $20
+   0010                 overrunerr   equ    $10
+   0008                 txfifoempty  equ    $08
+   0004                 txnotfull    equ    $04
+   0002                 rxfifofull   equ    $02
+   0001                 rxnotempty   equ    $01
+                        
+                        ; timer register addresses
+                        ;
+   0008                 timrcntl     equ    $0008
+   0008                 timrstat     equ    $0008
+   0009                 timricl      equ    $0009
+   000a                 timrich      equ    $000a
+                        
+   0088                 time0        equ    $88     ; 5 seconds
+   0013                 time1        equ    $13     ; 5 seconds
+   0001                 tmstart      equ    $01     ; start timer
+   0004                 tmdone       equ    $04     ; timer done
+   0000                 tmstop       equ    $00     ; stop timer
+                        
+                        ; other register address
+                        ;
+   000c                 oporta       equ    $000c   ; port a
+   000d                 imask        equ    $000d   ; interrupt mask
+   000e                 randcntl     equ    $000e   ; random number start/stop
+   000f                 randmask     equ    $000f   ; random number mask
+   000f                 randdata     equ    $000f   ; random number
+   0010                 isrc         equ    $0010   ; interrupt source
+                        
+   0fff                 stacktop:    equ    $0fff   ; stack top
+                        
+                        
+                        ;=======================================================
+                        ; Start from reset
+                        ;=======================================================
+   0000                              org    0
+                        
+   0000   f3            start:       di                    ; disable interrupt
+   0001   31 ff 0f                   ld     sp,stacktop    ; set stack pointer
+   0004   cd 13 00                   call   inituart       ; init and test of UART
+                        
+   0007   21 4f 00      main:        ld     hl,Banner
+   000a   cd 20 00                   call   puts           ; print hello message
+   000d   cd 3c 00                   call   wait1          ; wait
+   0010   c3 07 00                   jp     main
+                        
+                        
+                        ;=======================================================
+                        ; Initialize the UART
+                        ;   inputs  : none
+                        ;   destroys: a
+                        ;=======================================================
+   0013   3e e3         inituart:    ld     a, baud0      ; baud rate
+   0015   d3 01                      out   (uartbsr0),a
+   0017   3e 78                      ld     a, baud1
+   0019   d3 02                      out   (uartbsr1),a
+   001b   3e 03                      ld     a, $03        ; enable tx and rx
+   001d   d3 00                      out   (uartcntl),a
+   001f   c9                         ret
+                        
+                        
+                        ;=======================================================
+                        ; Send a string to the UART
+                        ;   inputs  : hl has pointer to string
+                        ;   destroys: a
+                        ;=======================================================
+   0020   f5            puts:        push   af             ; save a
+   0021   7e            putloop:     ld     a,(hl)         ; load a with next char
+   0022   fe 00                      cp     0              ; check for end of string
+   0024   ca 2e 00                   jp     z,putdone      ; exit if done
+   0027   23                         inc    hl             ; increment pointer
+   0028   cd 30 00                   call   putc           ; put a character
+   002b   c3 21 00                   jp     putloop        ; repeat
+   002e   f1            putdone:     pop    af             ; restore a
+   002f   c9                         ret
+                        
+                        
+                        ;=======================================================
+                        ; Send a single character to the UART
+                        ;   input   : a has character
+                        ;   destroys: none
+                        ;=======================================================
+   0030   f5            putc:        push   af             ; save a
+   0031   db 03         txfull:      in     a,(uartstat)   ; get tx uart status
+   0033   e6 04                      and    txnotfull      ; tx fifo full?
+   0035   ca 31 00                   jp     z, txfull      ; wait if full
+   0038   f1                         pop    af             ; restore a
+   0039   d3 05                      out   (uartdata),a    ; put a character
+   003b   c9                         ret
+                        
+                        
+                        ;=======================================================
+                        ; Wait for a few seconds
+                        ;   inputs  : none
+                        ;   destroys: a
+                        ;=======================================================
+   003c   3e 88         wait1:       ld    a, time0        ; initial count 0
+   003e   d3 09                      out  (timricl),a  
+   0040   3e 13                      ld    a, time1        ; initial count 1
+   0042   d3 0a                      out  (timrich),a  
+   0044   3e 01                      ld    a, tmstart      ; start timer
+   0046   d3 08                      out  (timrcntl),a
+   0048   db 08         wait2:       in   a,(timrstat)     ; read status
+   004a   e6 04                      and   tmdone          ; timer done
+   004c   28 fa                      jr    z,wait2
+   004e   c9                         ret
+                        
+                        
+                        ;=======================================================
+                        ; Strings
+                        ;=======================================================
+   004f   0d 0a         Banner:      db    $0d,$0a
+   0051   48 65 6c 6c                db    "Hello World from Z80-SOC"
+   0055   6f 20 57 6f   
+   0059   72 6c 64 20   
+   005d   66 72 6f 6d   
+   0061   20 5a 38 30   
+   0065   2d 53 4f 43   
+   0069   0d 0a 00                   db    $0d,$0a,0
+                        
+   0000                              end   start
+004f  Banner        00e3  baud0         0078  baud1         0040  framingerror
+000d  imask         0013  inituart      0010  isrc          0007  main      
+000c  oporta        0010  overrunerr    0020  parityerror    0030  putc      
+002e  putdone       0021  putloop       0020  puts          000e  randcntl  
+000f  randdata      000f  randmask      0002  rxfifofull    0001  rxnotempty
+0fff  stacktop      0000  start         0088  time0         0013  time1     
+0008  timrcntl      000a  timrich       0009  timricl       0008  timrstat  
+0004  tmdone        0001  tmstart       0000  tmstop        0008  txfifoempty
+0031  txfull        0004  txnotfull     0001  uartbsr0      0002  uartbsr1  
+0000  uartcntl      0005  uartdata      0004  uartmask      0003  uartstat  
+003c  wait1         0048  wait2         
+
